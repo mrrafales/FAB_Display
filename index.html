@@ -1,0 +1,2683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Matrix Studio — 23×46 — ESP32</title>
+<style>
+  /* Google Fonts removed for ESP32 offline use — using system fallbacks */
+
+  :root {
+    --bg-dark: #0a0c10;
+    --bg-panel: #12151c;
+    --bg-panel-alt: #181c26;
+    --bg-input: #1e2330;
+    --border: #2a3040;
+    --border-light: #3a4560;
+    --text-primary: #e8ecf4;
+    --text-secondary: #8892a8;
+    --text-dim: #555e72;
+    --accent: #00e5a0;
+    --accent-dim: #00e5a033;
+    --accent-hover: #00ffb3;
+    --danger: #ff4466;
+    --warn: #ffaa22;
+    --led-off: #1a1e28;
+    --led-glow: 0 0 3px currentColor, 0 0 8px currentColor;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Outfit', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── Header ─── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .header h1 {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .header .dim {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  }
+  .led-indicator {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ─── Layout ─── */
+  .app-layout {
+    display: flex;
+    height: calc(100vh - 49px);
+  }
+
+  /* ─── Sidebar ─── */
+  .sidebar {
+    width: 320px;
+    min-width: 320px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .panel {
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .panel-header:hover { background: var(--bg-panel-alt); }
+  .panel-title {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .panel-toggle {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .panel-toggle.collapsed { transform: rotate(-90deg); }
+  .panel-body {
+    padding: 4px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .panel-body.hidden { display: none; }
+
+  /* ─── Controls ─── */
+  label.ctrl-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ctrl-row-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  input[type="text"], input[type="number"], select {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim);
+  }
+  input[type="number"] {
+    width: 60px;
+    text-align: center;
+    -moz-appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  input[type="color"] {
+    -webkit-appearance: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 36px;
+    height: 32px;
+    padding: 2px;
+    background: var(--bg-input);
+    cursor: pointer;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 4px var(--accent);
+  }
+
+  select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238892a8'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active {
+    background: var(--accent);
+    color: var(--bg-dark);
+    border-color: var(--accent);
+  }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn-sm { padding: 5px 10px; font-size: 10px; }
+
+  .btn-group {
+    display: flex;
+    gap: 0;
+  }
+  .btn-group .btn {
+    border-radius: 0;
+    border-right-width: 0;
+  }
+  .btn-group .btn:first-child { border-radius: 6px 0 0 6px; }
+  .btn-group .btn:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
+
+  .color-presets {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .color-preset {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .color-preset:hover, .color-preset.active {
+    border-color: #fff;
+    transform: scale(1.15);
+  }
+
+  /* ─── Lite Brite Palette ─── */
+  .lite-brite-palette {
+    gap: 6px;
+  }
+  .lb-preset {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 6px rgba(0,0,0,0.4);
+    transition: all 0.15s;
+  }
+  .lb-preset:hover, .lb-preset.active {
+    border-color: #fff;
+    transform: scale(1.2);
+    box-shadow: 0 0 10px currentColor;
+  }
+  .lb-label {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .checkbox-row input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px; height: 14px;
+  }
+
+  /* ─── Main Canvas Area ─── */
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    background:
+      radial-gradient(ellipse at 50% 30%, #151a2808, transparent 70%),
+      var(--bg-dark);
+    position: relative;
+    overflow: auto;
+  }
+
+  /* ─── Matrix ─── */
+  .matrix-scroll-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    overflow: auto;
+    min-height: 0;
+  }
+  .matrix-wrapper {
+    background: #080a0e;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow:
+      0 0 0 1px var(--border),
+      0 4px 24px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.03);
+    position: relative;
+    transform-origin: center center;
+    margin: auto;
+  }
+  .matrix-frame-label {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(46, 1fr);
+    grid-template-rows: repeat(23, 1fr);
+    gap: 2px;
+    cursor: crosshair;
+    touch-action: none;
+    position: relative;
+  }
+  .led {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--led-off);
+    transition: background 0.05s, box-shadow 0.05s;
+    position: relative;
+  }
+  .led.on {
+    box-shadow: var(--led-glow);
+  }
+
+  /* ─── Toolbar above matrix ─── */
+  .matrix-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin-bottom: 0;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border);
+    width: 100%;
+  }
+  .toolbar-sep {
+    width: 1px;
+    height: 24px;
+    background: var(--border);
+  }
+  .coords-display {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    min-width: 100px;
+  }
+
+  /* ─── Layers List ─── */
+  .layer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-input);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .layer-item:hover { border-color: var(--border-light); }
+  .layer-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .layer-icon {
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+  }
+  .layer-name { flex: 1; }
+  .layer-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .layer-actions .btn-sm {
+    padding: 3px 6px;
+    font-size: 9px;
+    border: 1px solid var(--border);
+  }
+  .layer-vis {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+  }
+  .layer-vis:hover { opacity: 1; }
+  .layer-vis.hidden-layer { opacity: 0.3; }
+
+  /* ─── Static VU Layer Controls ─── */
+  .layer-vu-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .vu-level-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .vu-level-row .vu-bar-label {
+    min-width: 28px;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+  .vu-level-row input[type="range"] {
+    flex: 1;
+    height: 3px;
+  }
+  .vu-level-val {
+    min-width: 32px;
+    text-align: right;
+    color: var(--accent);
+    font-size: 10px;
+  }
+  .vu-incr-btns {
+    display: flex;
+    gap: 3px;
+  }
+  .vu-incr-btns .btn-sm {
+    padding: 2px 7px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    min-width: 24px;
+    text-align: center;
+  }
+  .vu-master-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0 2px;
+  }
+  .vu-master-row .btn-sm {
+    flex: 1;
+    text-align: center;
+  }
+
+  /* ─── VU Meter Animation ─── */
+  @keyframes vuBounce {
+    0%, 100% { transform: scaleY(0.3); }
+    15% { transform: scaleY(1); }
+    30% { transform: scaleY(0.6); }
+    50% { transform: scaleY(0.85); }
+    70% { transform: scaleY(0.45); }
+    85% { transform: scaleY(0.7); }
+  }
+
+  /* ─── Scrollbar ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+  /* ─── Fundraiser ─── */
+  .fundraiser-stats {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 6px;
+  }
+  .fund-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+  }
+  .fund-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .fund-stat-value {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .fund-highlight {
+    color: var(--accent);
+    font-size: 15px;
+  }
+  .fund-raised {
+    font-size: 18px;
+  }
+  .fund-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 0;
+  }
+  .fund-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 6px 0 4px;
+  }
+  .fund-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #00ffb3);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .fund-progress-fill.complete {
+    background: linear-gradient(90deg, #ffaa22, #ffdd00);
+    box-shadow: 0 0 8px #ffaa22;
+  }
+  .fund-layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    margin-top: 2px;
+  }
+  .fund-layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .fund-layer-row:hover { border-color: var(--border-light); }
+  .fund-layer-row.checked { border-color: var(--accent); background: var(--accent-dim); }
+  .fund-layer-row input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 13px; height: 13px;
+    flex-shrink: 0;
+  }
+  .fund-layer-row .fund-layer-name {
+    flex: 1;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fund-layer-row .fund-layer-icon {
+    font-size: 12px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .fund-layer-row .fund-layer-count {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .fund-empty-msg {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
+  /* ─── Text Layer Inline Controls ─── */
+  .layer-text-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .layer-text-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .layer-text-row input[type="range"] {
+    flex: 1;
+    height: 3px;
+  }
+  .layer-text-row input[type="color"] {
+    flex-shrink: 0;
+  }
+
+  /* ─── Placement Mode ─── */
+  .place-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+  }
+  .place-btn.placing {
+    background: var(--accent) !important;
+    color: var(--bg-dark) !important;
+  }
+  .place-readout {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .place-readout span { color: var(--text-primary); }
+  .placement-banner {
+    display: none;
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: var(--bg-dark);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    letter-spacing: 0.5px;
+  }
+  .placement-banner.active { display: block; }
+  .matrix-grid.placing-point { cursor: pointer !important; }
+  .matrix-grid.placing-rect { cursor: crosshair !important; }
+  .placement-rect {
+    position: absolute;
+    border: 2px solid var(--accent);
+    background: rgba(0, 229, 160, 0.12);
+    pointer-events: none;
+    z-index: 5;
+    border-radius: 2px;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 1100px) {
+    .app-layout { flex-direction: column; }
+    .sidebar {
+      width: 100%;
+      min-width: unset;
+      max-height: 40vh;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .led { width: 8px; height: 8px; }
+    .matrix-grid { gap: 1px; }
+  }
+
+  /* ─── Hardware Connection Status ─── */
+  .hw-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+  }
+  .hw-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #ff4466;
+    transition: all 0.3s;
+  }
+  .hw-dot.connected {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .hw-dot.connecting {
+    background: var(--warn);
+    box-shadow: 0 0 6px var(--warn);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .hw-label {
+    color: var(--text-dim);
+  }
+  .hw-label.connected { color: var(--accent); }
+  .hw-label.connecting { color: var(--warn); }
+
+  .hw-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sync-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .sync-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+  .hw-fps {
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 50px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="led-indicator"></div>
+    <h1>LED Matrix Studio</h1>
+    <span class="dim">23 × 46 &nbsp;|&nbsp; WS2811</span>
+  </div>
+  <div class="hw-controls">
+    <div class="hw-status" id="hwStatus">
+      <div class="hw-dot" id="hwDot"></div>
+      <span class="hw-label" id="hwLabel">Disconnected</span>
+    </div>
+    <label class="sync-toggle" title="Automatically push every frame to hardware">
+      <input type="checkbox" id="autoSync" checked> Auto-Sync
+    </label>
+    <button class="btn btn-sm" id="pushBtn" onclick="pushFrame()" title="Push current frame to hardware">⬆ Push</button>
+    <span class="hw-fps" id="hwFps"></span>
+  </div>
+  <div class="coords-display" id="coordsDisplay">—</div>
+</div>
+
+<div class="app-layout">
+  <!-- ════ SIDEBAR ════ -->
+  <div class="sidebar">
+
+    <!-- TOOLS -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">🖌 Drawing Tools</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <div class="btn-group">
+          <button class="btn active" data-tool="draw" onclick="setTool('draw', this)">Draw</button>
+          <button class="btn" data-tool="erase" onclick="setTool('erase', this)">Erase</button>
+          <button class="btn" data-tool="fill" onclick="setTool('fill', this)">Fill</button>
+          <button class="btn" data-tool="pick" onclick="setTool('pick', this)">Pick</button>
+        </div>
+        <div>
+          <label class="ctrl-label">Color Palette</label>
+          <div class="btn-group" style="margin-bottom:8px">
+            <button class="btn active" onclick="setPaletteMode('full',this)">Full Palette</button>
+            <button class="btn" onclick="setPaletteMode('litebrite',this)">Lite Brite</button>
+          </div>
+          <div class="ctrl-row" id="fullPalette">
+            <input type="color" id="brushColor" value="#00e5a0">
+            <div class="color-presets">
+              <div class="color-preset active" style="background:#00e5a0" onclick="pickColor('#00e5a0',this)"></div>
+              <div class="color-preset" style="background:#ff4466" onclick="pickColor('#ff4466',this)"></div>
+              <div class="color-preset" style="background:#ffaa22" onclick="pickColor('#ffaa22',this)"></div>
+              <div class="color-preset" style="background:#3388ff" onclick="pickColor('#3388ff',this)"></div>
+              <div class="color-preset" style="background:#ff44ff" onclick="pickColor('#ff44ff',this)"></div>
+              <div class="color-preset" style="background:#ffffff" onclick="pickColor('#ffffff',this)"></div>
+              <div class="color-preset" style="background:#44ffff" onclick="pickColor('#44ffff',this)"></div>
+              <div class="color-preset" style="background:#88ff44" onclick="pickColor('#88ff44',this)"></div>
+            </div>
+          </div>
+          <div class="color-presets lite-brite-palette" id="liteBritePalette" style="display:none">
+            <div class="color-preset lb-preset" style="background:#ff0000" onclick="pickColor('#ff0000',this)"><span class="lb-label">R</span></div>
+            <div class="color-preset lb-preset" style="background:#ff8800" onclick="pickColor('#ff8800',this)"><span class="lb-label">O</span></div>
+            <div class="color-preset lb-preset" style="background:#ffdd00" onclick="pickColor('#ffdd00',this)"><span class="lb-label">Y</span></div>
+            <div class="color-preset lb-preset" style="background:#00cc00" onclick="pickColor('#00cc00',this)"><span class="lb-label">G</span></div>
+            <div class="color-preset lb-preset" style="background:#0066ff" onclick="pickColor('#0066ff',this)"><span class="lb-label">B</span></div>
+            <div class="color-preset lb-preset" style="background:#9933ff" onclick="pickColor('#9933ff',this)"><span class="lb-label">P</span></div>
+            <div class="color-preset lb-preset active" style="background:#ffffff" onclick="pickColor('#ffffff',this)"><span class="lb-label" style="color:#333">W</span></div>
+          </div>
+        </div>
+        <div>
+          <label class="ctrl-label">Brightness: <span id="brightnessVal">100%</span></label>
+          <input type="range" min="10" max="100" value="100" id="brightness" oninput="document.getElementById('brightnessVal').textContent=this.value+'%'">
+        </div>
+        <button class="btn danger" onclick="clearMatrix()" style="width:100%">✕ Clear All Layers</button>
+      </div>
+    </div>
+
+    <!-- TEXT -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">✎ Text Layer</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <div>
+          <label class="ctrl-label">Text Content</label>
+          <input type="text" id="textInput" value="HELLO" placeholder="Enter text..." maxlength="30">
+        </div>
+        <div>
+          <label class="ctrl-label">Text Color</label>
+          <div class="ctrl-row">
+            <input type="color" id="textColor" value="#ff4466">
+          </div>
+        </div>
+        <div>
+          <label class="ctrl-label">Font Size</label>
+          <select id="textSize">
+            <option value="small">Small (5px)</option>
+            <option value="medium" selected>Medium (7px)</option>
+            <option value="large">Large (9px)</option>
+          </select>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="textScroll" onchange="document.getElementById('textScrollSpeedWrap').style.display=this.checked?'':'none'"> Scroll Text
+        </label>
+        <div id="textScrollSpeedWrap" style="display:none">
+          <label class="ctrl-label">Scroll Speed: <span id="textScrollSpeedVal">Medium</span></label>
+          <input type="range" min="1" max="5" value="3" id="textScrollSpeed" oninput="document.getElementById('textScrollSpeedVal').textContent=['Slow','Slow-Med','Medium','Med-Fast','Fast'][this.value-1]">
+        </div>
+        <input type="hidden" id="textX" value="1">
+        <input type="hidden" id="textY" value="1">
+        <button class="btn place-btn" id="textPlaceBtn" onclick="startPlacement('text')" style="width:100%">📍 Place Text on Matrix</button>
+      </div>
+    </div>
+
+    <!-- VU METER -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">📊 VU Meter</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <div>
+          <label class="ctrl-label">Mode</label>
+          <div class="btn-group">
+            <button class="btn active" onclick="setVuMode('animated',this)">Animated</button>
+            <button class="btn" onclick="setVuMode('static',this)">Static</button>
+          </div>
+        </div>
+        <div>
+          <label class="ctrl-label">Orientation</label>
+          <div class="btn-group">
+            <button class="btn active" onclick="setVuOrientation('vertical',this)">Vertical</button>
+            <button class="btn" onclick="setVuOrientation('horizontal',this)">Horizontal</button>
+          </div>
+        </div>
+        <div>
+          <label class="ctrl-label">Color Mode</label>
+          <select id="vuColorMode">
+            <option value="classic">Classic (Green→Red)</option>
+            <option value="cool">Cool (Cyan→Blue)</option>
+            <option value="warm">Warm (Yellow→Red)</option>
+            <option value="neon">Neon (Magenta→Cyan)</option>
+            <option value="mono">Mono (Single Color)</option>
+            <option value="custom">Custom Gradient</option>
+          </select>
+        </div>
+        <div id="vuCustomColors" style="display:none">
+          <div class="ctrl-row-split">
+            <div>
+              <label class="ctrl-label">Low Color</label>
+              <input type="color" id="vuColorLow" value="#00ff00">
+            </div>
+            <div>
+              <label class="ctrl-label">High Color</label>
+              <input type="color" id="vuColorHigh" value="#ff0000">
+            </div>
+          </div>
+        </div>
+        <div id="vuMonoColorWrap" style="display:none">
+          <label class="ctrl-label">Mono Color</label>
+          <input type="color" id="vuMonoColor" value="#00e5a0">
+        </div>
+        <input type="hidden" id="vuX" value="0">
+        <input type="hidden" id="vuY" value="0">
+        <input type="hidden" id="vuWidth" value="46">
+        <input type="hidden" id="vuHeight" value="23">
+        <!-- Animated-only controls -->
+        <div id="vuAnimatedControls">
+          <div>
+            <label class="ctrl-label">Speed: <span id="vuSpeedVal">Medium</span></label>
+            <input type="range" min="1" max="5" value="3" id="vuSpeed" oninput="document.getElementById('vuSpeedVal').textContent=['Slow','Slow-Med','Medium','Med-Fast','Fast'][this.value-1]">
+          </div>
+          <label class="checkbox-row" style="margin-top:6px">
+            <input type="checkbox" id="vuPeakHold"> Peak Hold
+          </label>
+        </div>
+        <!-- Static-only controls -->
+        <div id="vuStaticControls" style="display:none">
+          <div>
+            <label class="ctrl-label">Initial Level: <span id="vuStaticLevelVal">50%</span></label>
+            <input type="range" min="0" max="100" value="50" id="vuStaticLevel" oninput="document.getElementById('vuStaticLevelVal').textContent=this.value+'%'">
+          </div>
+          <div>
+            <label class="ctrl-label">Step Size: <span id="vuStepVal">5%</span></label>
+            <input type="range" min="1" max="25" value="5" id="vuStepSize" oninput="document.getElementById('vuStepVal').textContent=this.value+'%'">
+          </div>
+        </div>
+        <button class="btn place-btn" id="vuPlaceBtn" onclick="startPlacement('vu')" style="width:100%">📍 Drag VU Area on Matrix</button>
+        <span id="vuXVal" style="display:none">0</span><span id="vuYVal" style="display:none">0</span>
+        <span id="vuWVal" style="display:none">46</span><span id="vuHVal" style="display:none">23</span>
+      </div>
+    </div>
+
+    <!-- IMAGE -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">🖼 Image Layer</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <input type="file" id="imageUpload" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+        <button class="btn" onclick="document.getElementById('imageUpload').click()" style="width:100%">Upload Image</button>
+        <div>
+          <label class="ctrl-label">Resize Mode</label>
+          <select id="imgResize">
+            <option value="fit">Fit to Matrix</option>
+            <option value="stretch">Stretch</option>
+            <option value="original">Original Size</option>
+          </select>
+        </div>
+        <input type="hidden" id="imgX" value="0">
+        <input type="hidden" id="imgY" value="0">
+        <button class="btn place-btn" id="imgPlaceBtn" onclick="startPlacement('image')" style="width:100%" disabled>📍 Place Image on Matrix</button>
+      </div>
+    </div>
+
+    <!-- LAYERS -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">◫ Layers</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body" id="layersList">
+        <div class="layer-item selected" data-layer="draw">
+          <span class="layer-icon">🖌</span>
+          <span class="layer-name">Draw Layer</span>
+          <div class="layer-actions">
+            <div class="layer-vis" onclick="toggleLayerVis('draw',this)">👁</div>
+          </div>
+        </div>
+        <div class="layer-item" data-layer="bg" style="opacity:0.75">
+          <span class="layer-icon">🎨</span>
+          <span class="layer-name">Background</span>
+          <div class="layer-actions">
+            <div class="layer-vis" onclick="toggleLayerVis('bg',this)">👁</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNDRAISER -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">💰 Fundraiser</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <label class="checkbox-row">
+          <input type="checkbox" id="fundraiserEnabled" onchange="toggleFundraiser()"> Enable Fundraiser Mode
+        </label>
+        <div id="fundraiserControls" style="display:none">
+          <div>
+            <label class="ctrl-label">Fundraising Goal ($)</label>
+            <input type="number" id="fundraiserGoal" value="1000" min="1" step="1" style="width:100%" onchange="updateFundraiser()" oninput="updateFundraiser()">
+          </div>
+          <div>
+            <label class="ctrl-label">Include Layers</label>
+            <div class="fund-layer-list" id="fundLayerList">
+              <!-- populated dynamically -->
+            </div>
+          </div>
+          <div class="fundraiser-stats">
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Selected Layers</span>
+              <span class="fund-stat-value" id="fundSelectedCount">0</span>
+            </div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Total Pegs in Design</span>
+              <span class="fund-stat-value" id="fundTotalPegs">0</span>
+            </div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Value Per Peg</span>
+              <span class="fund-stat-value fund-highlight" id="fundPegValue">—</span>
+            </div>
+            <div class="fund-divider"></div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Pegs Placed</span>
+              <span class="fund-stat-value" id="fundPegsPlaced">0</span>
+            </div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Amount Raised</span>
+              <span class="fund-stat-value fund-highlight fund-raised" id="fundAmountRaised">$0.00</span>
+            </div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Progress</span>
+              <span class="fund-stat-value" id="fundProgress">0%</span>
+            </div>
+            <div class="fund-progress-bar">
+              <div class="fund-progress-fill" id="fundProgressFill" style="width:0%"></div>
+            </div>
+            <div class="fund-stat-row">
+              <span class="fund-stat-label">Remaining</span>
+              <span class="fund-stat-value" id="fundRemaining">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HARDWARE -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">📡 Hardware</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <div>
+          <label class="ctrl-label">Hardware Brightness</label>
+          <div class="ctrl-row">
+            <input type="range" min="0" max="255" value="255" id="hwBrightness" 
+              oninput="document.getElementById('hwBrightnessVal').textContent=this.value; sendBrightness(this.value);">
+            <span id="hwBrightnessVal" style="font-family:monospace;font-size:11px;min-width:28px;text-align:right;color:var(--accent)">255</span>
+          </div>
+        </div>
+        <div class="ctrl-row-split">
+          <button class="btn" onclick="sendClearHW()" style="width:100%">Clear HW</button>
+          <button class="btn" onclick="pushFrame()" style="width:100%">⬆ Push Frame</button>
+        </div>
+        <div>
+          <label class="ctrl-label">Connection</label>
+          <div id="hwInfoDisplay" style="font-family:monospace;font-size:11px;color:var(--text-dim);line-height:1.6;">
+            Not connected
+          </div>
+        </div>
+        <button class="btn" onclick="reconnectWS()" style="width:100%">🔄 Reconnect</button>
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div class="panel">
+      <div class="panel-header" onclick="togglePanel(this)">
+        <span class="panel-title">⬇ Export</span>
+        <span class="panel-toggle">▼</span>
+      </div>
+      <div class="panel-body">
+        <button class="btn" onclick="exportJSON()" style="width:100%">Export as JSON</button>
+        <button class="btn" onclick="exportImage()" style="width:100%">Export as PNG</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════ MAIN AREA ════ -->
+  <div class="main-area">
+    <div class="placement-banner" id="placementBanner">Click on the matrix to set position — ESC to cancel</div>
+    <div class="matrix-toolbar">
+      <div class="btn-group">
+        <button class="btn btn-sm active" id="modeEdit" onclick="setMode('edit')">Edit</button>
+        <button class="btn btn-sm" id="modePreview" onclick="setMode('preview')">Preview</button>
+      </div>
+      <div class="toolbar-sep"></div>
+      <button class="btn btn-sm" onclick="zoomIn()">+</button>
+      <button class="btn btn-sm" onclick="zoomOut()">−</button>
+      <span class="dim" id="zoomLevel" style="font-family:'JetBrains Mono';font-size:11px;">100%</span>
+      <div class="toolbar-sep"></div>
+      <label class="btn btn-sm" title="Set background color" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+        BG <input type="color" id="matrixBgColor" value="#000000" onchange="setMatrixBackground(this.value)" style="width:22px;height:22px;padding:0;border:1px solid var(--border);border-radius:3px;cursor:pointer;">
+      </label>
+      <button class="btn btn-sm" onclick="clearMatrix()" title="Clear all layers">✕ Clear All</button>
+    </div>
+
+    <div class="matrix-scroll-area">
+      <div class="matrix-wrapper" id="matrixWrapper">
+        <div class="matrix-grid" id="matrixGrid">
+          <div class="placement-rect" id="placementRect" style="display:none"></div>
+        </div>
+        <div class="matrix-frame-label">23 ROWS × 46 COLS &nbsp;·&nbsp; 1058 LEDs</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════
+const ROWS = 23;
+const COLS = 46;
+let currentTool = 'draw';
+let currentMode = 'edit';
+let isDrawing = false;
+let lastTouchR = -1;
+let lastTouchC = -1;
+let skipNextClick = false;
+let zoom = 1;
+let vuOrientation = 'vertical';
+let vuMode = 'animated';
+let layerIdCounter = 0;
+
+// ═══════════════════════════════════════════
+// LAYERS
+// ═══════════════════════════════════════════
+const layers = {
+  bg: { type: 'bg', visible: true, color: null },
+  draw: { type: 'draw', visible: true, data: Array.from({length: ROWS}, () => Array(COLS).fill(null)) }
+};
+const dynamicLayers = []; // vu meters, text, images
+
+// ═══════════════════════════════════════════
+// MATRIX INIT
+// ═══════════════════════════════════════════
+const grid = document.getElementById('matrixGrid');
+const leds = [];
+
+function initMatrix() {
+  for (let r = 0; r < ROWS; r++) {
+    leds[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      const el = document.createElement('div');
+      el.className = 'led';
+      el.dataset.r = r;
+      el.dataset.c = c;
+      el.addEventListener('mousedown', (e) => startDraw(r, c, e));
+      el.addEventListener('mouseenter', (e) => continueDraw(r, c, e));
+      el.addEventListener('click', (e) => clickLed(r, c, e));
+      grid.appendChild(el);
+      leds[r][c] = el;
+    }
+  }
+  document.addEventListener('mouseup', (e) => {
+    if (placementMode === 'vu' && placementDrag) {
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (target && target.classList.contains('led')) {
+        handlePlacementDragEnd(parseInt(target.dataset.r), parseInt(target.dataset.c));
+      } else {
+        cancelPlacement();
+      }
+      skipNextClick = true;
+    }
+    isDrawing = false;
+  });
+
+  // ── Touch support for mobile/tablet ──
+  grid.addEventListener('touchstart', (e) => {
+    if (currentMode !== 'edit') return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (target && target.classList.contains('led')) {
+      const r = parseInt(target.dataset.r), c = parseInt(target.dataset.c);
+      if (placementMode) {
+        if (handlePlacementClick(r, c)) return;
+        if (handlePlacementDragStart(r, c)) return;
+        return;
+      }
+      isDrawing = true;
+      applyTool(r, c);
+    }
+  }, { passive: false });
+
+  grid.addEventListener('touchmove', (e) => {
+    if (currentMode !== 'edit') return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (target && target.classList.contains('led')) {
+      const r = parseInt(target.dataset.r);
+      const c = parseInt(target.dataset.c);
+      if (placementMode === 'vu' && placementDrag) {
+        handlePlacementDragMove(r, c);
+        return;
+      }
+      if (!isDrawing) return;
+      if (r !== lastTouchR || c !== lastTouchC) {
+        lastTouchR = r;
+        lastTouchC = c;
+        applyTool(r, c);
+        document.getElementById('coordsDisplay').textContent = `R${r} C${c}`;
+      }
+    }
+  }, { passive: false });
+
+  grid.addEventListener('touchend', (e) => {
+    if (placementMode === 'vu' && placementDrag) {
+      // Use last known drag position
+      const lastR = parseInt(document.getElementById('vuYVal').textContent);
+      const lastC = parseInt(document.getElementById('vuXVal').textContent);
+      const w = parseInt(document.getElementById('vuWVal').textContent);
+      const h = parseInt(document.getElementById('vuHVal').textContent);
+      if (w > 0 && h > 0) {
+        document.getElementById('vuX').value = lastC;
+        document.getElementById('vuY').value = lastR;
+        document.getElementById('vuWidth').value = w;
+        document.getElementById('vuHeight').value = h;
+        cancelPlacement();
+        addVuLayer();
+      }
+    }
+    isDrawing = false;
+    lastTouchR = -1;
+    lastTouchC = -1;
+  });
+
+  grid.addEventListener('mouseleave', () => {
+    document.getElementById('coordsDisplay').textContent = '—';
+  });
+  grid.addEventListener('mousemove', (e) => {
+    const t = e.target;
+    if (t.classList.contains('led')) {
+      document.getElementById('coordsDisplay').textContent = `R${t.dataset.r} C${t.dataset.c}`;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// DRAWING
+// ═══════════════════════════════════════════
+function getColor() {
+  const hex = document.getElementById('brushColor').value;
+  const b = document.getElementById('brightness').value / 100;
+  const r = Math.round(parseInt(hex.slice(1,3),16) * b);
+  const g = Math.round(parseInt(hex.slice(3,5),16) * b);
+  const bl = Math.round(parseInt(hex.slice(5,7),16) * b);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function startDraw(r, c, e) {
+  if (currentMode !== 'edit') return;
+  e.preventDefault();
+  // Placement mode intercept
+  if (placementMode) {
+    if (handlePlacementClick(r, c)) return;
+    if (handlePlacementDragStart(r, c)) return;
+    return;
+  }
+  isDrawing = true;
+  applyTool(r, c);
+}
+function continueDraw(r, c, e) {
+  // Placement drag intercept
+  if (placementMode === 'vu' && placementDrag) {
+    handlePlacementDragMove(r, c);
+    return;
+  }
+  if (!isDrawing || currentMode !== 'edit') return;
+  applyTool(r, c);
+}
+function clickLed(r, c, e) {
+  if (skipNextClick) { skipNextClick = false; return; }
+  if (placementMode) return; // handled by startDraw
+  if (currentMode !== 'edit') return;
+  applyTool(r, c);
+}
+
+function applyTool(r, c) {
+  if (currentTool === 'draw') {
+    layers.draw.data[r][c] = getColor();
+  } else if (currentTool === 'erase') {
+    layers.draw.data[r][c] = null;
+  } else if (currentTool === 'fill') {
+    floodFill(r, c, layers.draw.data[r][c], getColor());
+  } else if (currentTool === 'pick') {
+    const color = layers.draw.data[r][c];
+    if (color) {
+      document.getElementById('brushColor').value = rgbToHex(color);
+    }
+  }
+  render();
+}
+
+function floodFill(r, c, targetColor, fillColor) {
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+  if (layers.draw.data[r][c] !== targetColor) return;
+  if (layers.draw.data[r][c] === fillColor) return;
+  layers.draw.data[r][c] = fillColor;
+  floodFill(r-1, c, targetColor, fillColor);
+  floodFill(r+1, c, targetColor, fillColor);
+  floodFill(r, c-1, targetColor, fillColor);
+  floodFill(r, c+1, targetColor, fillColor);
+}
+
+function rgbToHex(rgb) {
+  const m = rgb.match(/(\d+)/g);
+  if (!m) return '#000000';
+  return '#' + m.slice(0,3).map(x => parseInt(x).toString(16).padStart(2,'0')).join('');
+}
+
+// ═══════════════════════════════════════════
+// BITMAP FONT (5×7 base, scaled)
+// ═══════════════════════════════════════════
+const FONT_5x7 = {
+  'A':['01110','10001','10001','11111','10001','10001','10001'],
+  'B':['11110','10001','10001','11110','10001','10001','11110'],
+  'C':['01110','10001','10000','10000','10000','10001','01110'],
+  'D':['11110','10001','10001','10001','10001','10001','11110'],
+  'E':['11111','10000','10000','11110','10000','10000','11111'],
+  'F':['11111','10000','10000','11110','10000','10000','10000'],
+  'G':['01110','10001','10000','10111','10001','10001','01110'],
+  'H':['10001','10001','10001','11111','10001','10001','10001'],
+  'I':['01110','00100','00100','00100','00100','00100','01110'],
+  'J':['00111','00010','00010','00010','00010','10010','01100'],
+  'K':['10001','10010','10100','11000','10100','10010','10001'],
+  'L':['10000','10000','10000','10000','10000','10000','11111'],
+  'M':['10001','11011','10101','10101','10001','10001','10001'],
+  'N':['10001','11001','10101','10011','10001','10001','10001'],
+  'O':['01110','10001','10001','10001','10001','10001','01110'],
+  'P':['11110','10001','10001','11110','10000','10000','10000'],
+  'Q':['01110','10001','10001','10001','10101','10010','01101'],
+  'R':['11110','10001','10001','11110','10100','10010','10001'],
+  'S':['01110','10001','10000','01110','00001','10001','01110'],
+  'T':['11111','00100','00100','00100','00100','00100','00100'],
+  'U':['10001','10001','10001','10001','10001','10001','01110'],
+  'V':['10001','10001','10001','10001','01010','01010','00100'],
+  'W':['10001','10001','10001','10101','10101','11011','10001'],
+  'X':['10001','10001','01010','00100','01010','10001','10001'],
+  'Y':['10001','10001','01010','00100','00100','00100','00100'],
+  'Z':['11111','00001','00010','00100','01000','10000','11111'],
+  '0':['01110','10011','10101','10101','10101','11001','01110'],
+  '1':['00100','01100','00100','00100','00100','00100','01110'],
+  '2':['01110','10001','00001','00110','01000','10000','11111'],
+  '3':['01110','10001','00001','00110','00001','10001','01110'],
+  '4':['00010','00110','01010','10010','11111','00010','00010'],
+  '5':['11111','10000','11110','00001','00001','10001','01110'],
+  '6':['01110','10001','10000','11110','10001','10001','01110'],
+  '7':['11111','00001','00010','00100','01000','01000','01000'],
+  '8':['01110','10001','10001','01110','10001','10001','01110'],
+  '9':['01110','10001','10001','01111','00001','10001','01110'],
+  ' ':['00000','00000','00000','00000','00000','00000','00000'],
+  '!':['00100','00100','00100','00100','00100','00000','00100'],
+  '.':['00000','00000','00000','00000','00000','00000','00100'],
+  '-':['00000','00000','00000','11111','00000','00000','00000'],
+  ':':['00000','00100','00100','00000','00100','00100','00000'],
+  '?':['01110','10001','00001','00110','00100','00000','00100'],
+  '+':['00000','00100','00100','11111','00100','00100','00000'],
+  '=':['00000','00000','11111','00000','11111','00000','00000'],
+  '<':['00010','00100','01000','10000','01000','00100','00010'],
+  '>':['01000','00100','00010','00001','00010','00100','01000'],
+  '/':['00001','00010','00010','00100','01000','01000','10000'],
+  '#':['01010','01010','11111','01010','11111','01010','01010'],
+  '@':['01110','10001','10111','10101','10110','10000','01111'],
+  '*':['00000','00100','10101','01110','10101','00100','00000'],
+  '(':['00010','00100','01000','01000','01000','00100','00010'],
+  ')':['01000','00100','00010','00010','00010','00100','01000'],
+  '%':['11001','11010','00010','00100','01000','01011','10011'],
+  '\'':['00100','00100','01000','00000','00000','00000','00000'],
+  '"':['01010','01010','01010','00000','00000','00000','00000'],
+  ',':['00000','00000','00000','00000','00000','00100','01000'],
+};
+
+function getTextBitmap(text, size) {
+  const chars = text.toUpperCase().split('');
+  const rows = size === 'small' ? 5 : size === 'large' ? 9 : 7;
+  const charW = 5;
+  const scale = size === 'small' ? 0.71 : size === 'large' ? 1.29 : 1;
+  const gap = 1;
+
+  // Build raw 7-row bitmap
+  let rawBitmap = [];
+  for (let r = 0; r < 7; r++) {
+    rawBitmap[r] = [];
+    chars.forEach((ch, ci) => {
+      const glyph = FONT_5x7[ch] || FONT_5x7[' '];
+      for (let c = 0; c < charW; c++) {
+        rawBitmap[r].push(glyph[r][c] === '1' ? 1 : 0);
+      }
+      if (ci < chars.length - 1) rawBitmap[r].push(0); // gap
+    });
+  }
+
+  if (size === 'small') {
+    // Downsample to 5 rows
+    let scaled = [];
+    for (let r = 0; r < 5; r++) {
+      const sr = Math.round(r * 6 / 4);
+      scaled[r] = rawBitmap[Math.min(sr, 6)];
+    }
+    return scaled;
+  } else if (size === 'large') {
+    // Upscale to 9 rows, double some
+    let scaled = [];
+    for (let r = 0; r < 9; r++) {
+      const sr = Math.round(r * 6 / 8);
+      scaled[r] = rawBitmap[Math.min(sr, 6)].flatMap(px => [px]); // can double cols too if needed
+    }
+    return scaled;
+  }
+
+  return rawBitmap;
+}
+
+// ═══════════════════════════════════════════
+// VU METER LOGIC
+// ═══════════════════════════════════════════
+const vuColorSchemes = {
+  classic: (t) => {
+    if (t < 0.5) return lerpColor('#00ff00', '#ffff00', t * 2);
+    return lerpColor('#ffff00', '#ff0000', (t - 0.5) * 2);
+  },
+  cool: (t) => lerpColor('#00ffff', '#0044ff', t),
+  warm: (t) => lerpColor('#ffdd00', '#ff2200', t),
+  neon: (t) => lerpColor('#ff00ff', '#00ffff', t),
+  mono: (t) => document.getElementById('vuMonoColor').value,
+  custom: (t) => lerpColor(
+    document.getElementById('vuColorLow').value,
+    document.getElementById('vuColorHigh').value,
+    t
+  ),
+};
+
+function lerpColor(a, b, t) {
+  const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+  const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+  const r = Math.round(ar + (br-ar)*t), g = Math.round(ag + (bg-ag)*t), bl = Math.round(ab + (bb-ab)*t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+// VU state per layer
+const vuStates = {};
+
+function simulateVU(layer) {
+  const id = layer.id;
+  if (!vuStates[id]) vuStates[id] = { levels: [], peaks: [], peakDecay: [] };
+  const state = vuStates[id];
+  const bars = layer.bars;
+  const speed = layer.speed;
+
+  while (state.levels.length < bars) {
+    state.levels.push(Math.random());
+    state.peaks.push(0);
+    state.peakDecay.push(0);
+  }
+
+  const speedFactor = [0.03, 0.06, 0.1, 0.15, 0.22][speed - 1];
+
+  for (let i = 0; i < bars; i++) {
+    const target = Math.random();
+    state.levels[i] += (target - state.levels[i]) * speedFactor;
+    state.levels[i] = Math.max(0, Math.min(1, state.levels[i] + (Math.random()-0.5)*0.08));
+
+    if (state.levels[i] > state.peaks[i]) {
+      state.peaks[i] = state.levels[i];
+      state.peakDecay[i] = 30;
+    } else {
+      state.peakDecay[i]--;
+      if (state.peakDecay[i] <= 0) state.peaks[i] -= 0.02;
+    }
+  }
+}
+
+function renderVULayer(layer, buffer) {
+  const id = layer.id;
+  if (!vuStates[id]) return;
+  const state = vuStates[id];
+  // Build color function per-layer
+  const colorMode = layer.colorMode;
+  let scheme;
+  if (colorMode === 'classic') scheme = vuColorSchemes.classic;
+  else if (colorMode === 'cool') scheme = vuColorSchemes.cool;
+  else if (colorMode === 'warm') scheme = vuColorSchemes.warm;
+  else if (colorMode === 'neon') scheme = vuColorSchemes.neon;
+  else if (colorMode === 'mono') scheme = () => layer.monoColor;
+  else if (colorMode === 'custom') scheme = (t) => lerpColor(layer.customColorLow, layer.customColorHigh, t);
+  else scheme = vuColorSchemes.classic;
+
+  const ox = layer.x, oy = layer.y;
+  const w = layer.width, h = layer.height;
+  const bars = layer.bars;
+
+  if (layer.orientation === 'vertical') {
+    const barWidth = Math.max(1, Math.floor(w / bars));
+    for (let b = 0; b < bars; b++) {
+      const level = state.levels[b];
+      const filledRows = Math.round(level * h);
+      for (let row = 0; row < h; row++) {
+        const fromBottom = h - 1 - row;
+        const lit = fromBottom < filledRows;
+        if (lit) {
+          const t = fromBottom / (h - 1);
+          const color = scheme(t);
+          for (let dx = 0; dx < barWidth; dx++) {
+            const c = ox + b * barWidth + dx;
+            const r = oy + row;
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS) buffer[r][c] = color;
+          }
+        }
+      }
+      // Peak hold
+      if (layer.peakHold) {
+        const peakRow = h - 1 - Math.round(state.peaks[b] * (h-1));
+        for (let dx = 0; dx < barWidth; dx++) {
+          const c = ox + b * barWidth + dx;
+          const r = oy + peakRow;
+          if (r >= 0 && r < ROWS && c >= 0 && c < COLS) buffer[r][c] = '#ffffff';
+        }
+      }
+    }
+  } else {
+    // Horizontal
+    const barHeight = Math.max(1, Math.floor(h / bars));
+    for (let b = 0; b < bars; b++) {
+      const level = state.levels[b];
+      const filledCols = Math.round(level * w);
+      for (let col = 0; col < w; col++) {
+        const lit = col < filledCols;
+        if (lit) {
+          const t = col / (w - 1);
+          const color = scheme(t);
+          for (let dy = 0; dy < barHeight; dy++) {
+            const r = oy + b * barHeight + dy;
+            const c = ox + col;
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS) buffer[r][c] = color;
+          }
+        }
+      }
+      if (layer.peakHold) {
+        const peakCol = Math.round(state.peaks[b] * (w-1));
+        for (let dy = 0; dy < barHeight; dy++) {
+          const r = oy + b * barHeight + dy;
+          const c = ox + peakCol;
+          if (r >= 0 && r < ROWS && c >= 0 && c < COLS) buffer[r][c] = '#ffffff';
+        }
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// TEXT LAYER RENDERING
+// ═══════════════════════════════════════════
+function renderTextLayer(layer, buffer) {
+  const bitmap = getTextBitmap(layer.text, layer.size);
+  let offsetX = layer.x;
+  if (layer.scroll) {
+    const totalW = bitmap[0] ? bitmap[0].length : 0;
+    const time = Date.now() / (800 / (layer.scrollSpeed || 1));
+    offsetX = COLS - (Math.floor(time) % (totalW + COLS));
+  }
+  for (let r = 0; r < bitmap.length; r++) {
+    for (let c = 0; c < bitmap[r].length; c++) {
+      if (bitmap[r][c]) {
+        const gr = layer.y + r;
+        const gc = offsetX + c;
+        if (gr >= 0 && gr < ROWS && gc >= 0 && gc < COLS) {
+          buffer[gr][gc] = layer.color;
+        }
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// IMAGE LAYER RENDERING
+// ═══════════════════════════════════════════
+function renderImageLayer(layer, buffer) {
+  if (!layer.pixels) return;
+  for (let r = 0; r < layer.pixels.length; r++) {
+    for (let c = 0; c < layer.pixels[r].length; c++) {
+      const px = layer.pixels[r][c];
+      if (px) {
+        const gr = layer.y + r;
+        const gc = layer.x + c;
+        if (gr >= 0 && gr < ROWS && gc >= 0 && gc < COLS) {
+          buffer[gr][gc] = px;
+        }
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════
+function render() {
+  const buffer = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+
+  // Background layer
+  if (layers.bg.visible && layers.bg.color) {
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        buffer[r][c] = layers.bg.color;
+  }
+
+  // Draw layer
+  if (layers.draw.visible) {
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (layers.draw.data[r][c]) buffer[r][c] = layers.draw.data[r][c];
+  }
+
+  // Dynamic layers
+  for (const layer of dynamicLayers) {
+    if (!layer.visible) continue;
+    if (layer.type === 'vu') {
+      if (layer.vuMode !== 'static') simulateVU(layer);
+      renderVULayer(layer, buffer);
+    } else if (layer.type === 'text') {
+      renderTextLayer(layer, buffer);
+    } else if (layer.type === 'image') {
+      renderImageLayer(layer, buffer);
+    }
+  }
+
+  // Apply to DOM
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const el = leds[r][c];
+      const color = buffer[r][c];
+      if (color) {
+        el.style.background = color;
+        el.style.boxShadow = `0 0 3px ${color}, 0 0 8px ${color}`;
+        el.classList.add('on');
+      } else {
+        el.style.background = '';
+        el.style.boxShadow = '';
+        el.classList.remove('on');
+      }
+    }
+  }
+
+  // Update fundraiser stats if active
+  if (fundraiserActive) updateFundraiser();
+  
+  // Auto-sync to hardware if enabled
+  if (wsConnected && document.getElementById('autoSync').checked) {
+    sendFrameToHW(buffer);
+  }
+}
+
+// ═══════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════
+let animating = false;
+function startAnimLoop() {
+  if (animating) return;
+  animating = true;
+  function loop() {
+    const hasAnimated = dynamicLayers.some(l => l.visible && ((l.type === 'vu' && l.vuMode !== 'static') || l.scroll));
+    if (hasAnimated) render();
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ═══════════════════════════════════════════
+// ADD LAYERS
+// ═══════════════════════════════════════════
+function addVuLayer() {
+  const id = 'vu_' + (++layerIdCounter);
+  const isStatic = vuMode === 'static';
+  const bars = 1;
+  const initialLevel = isStatic ? parseInt(document.getElementById('vuStaticLevel').value) / 100 : 0;
+  const uniformBars = true;
+  const stepSize = isStatic ? parseInt(document.getElementById('vuStepSize').value) / 100 : 0.05;
+
+  const layer = {
+    id, type: 'vu', visible: true,
+    vuMode: vuMode,
+    orientation: vuOrientation,
+    bars: bars,
+    colorMode: document.getElementById('vuColorMode').value,
+    monoColor: document.getElementById('vuMonoColor').value,
+    customColorLow: document.getElementById('vuColorLow').value,
+    customColorHigh: document.getElementById('vuColorHigh').value,
+    x: parseInt(document.getElementById('vuX').value),
+    y: parseInt(document.getElementById('vuY').value),
+    width: parseInt(document.getElementById('vuWidth').value),
+    height: parseInt(document.getElementById('vuHeight').value),
+    speed: isStatic ? 0 : parseInt(document.getElementById('vuSpeed').value),
+    peakHold: isStatic ? false : document.getElementById('vuPeakHold').checked,
+    stepSize: stepSize,
+    uniformBars: uniformBars,
+  };
+
+  // Initialize static state
+  if (isStatic) {
+    vuStates[id] = {
+      levels: Array(bars).fill(initialLevel),
+      peaks: Array(bars).fill(0),
+      peakDecay: Array(bars).fill(0),
+    };
+  }
+
+  dynamicLayers.push(layer);
+  const modeLabel = isStatic ? 'Static' : 'Anim';
+  addLayerUI(layer, isStatic ? '🌡' : '📊', `VU ${modeLabel} ${vuOrientation}`);
+  if (!isStatic) startAnimLoop();
+  render();
+  if (fundraiserActive) rebuildFundLayerList();
+}
+
+function addTextLayer() {
+  const id = 'text_' + (++layerIdCounter);
+  const layer = {
+    id, type: 'text', visible: true,
+    text: document.getElementById('textInput').value || 'HELLO',
+    color: document.getElementById('textColor').value,
+    x: parseInt(document.getElementById('textX').value),
+    y: parseInt(document.getElementById('textY').value),
+    size: document.getElementById('textSize').value,
+    scroll: document.getElementById('textScroll').checked,
+    scrollSpeed: [0.5, 0.75, 1, 1.5, 2.5][parseInt(document.getElementById('textScrollSpeed').value) - 1],
+  };
+  dynamicLayers.push(layer);
+  addLayerUI(layer, '✎', `"${layer.text.substring(0,10)}"`);
+  if (layer.scroll) startAnimLoop();
+  render();
+  if (fundraiserActive) rebuildFundLayerList();
+}
+
+let pendingImageData = null;
+function handleImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const resizeMode = document.getElementById('imgResize').value;
+    let w, h;
+    if (resizeMode === 'fit') {
+      const aspect = img.width / img.height;
+      if (aspect > COLS/ROWS) { w = COLS; h = Math.round(COLS/aspect); }
+      else { h = ROWS; w = Math.round(ROWS*aspect); }
+    } else if (resizeMode === 'stretch') {
+      w = COLS; h = ROWS;
+    } else {
+      w = Math.min(img.width, COLS); h = Math.min(img.height, ROWS);
+    }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const pixels = [];
+    for (let r = 0; r < h; r++) {
+      pixels[r] = [];
+      for (let c = 0; c < w; c++) {
+        const i = (r * w + c) * 4;
+        const a = imgData.data[i+3] / 255;
+        if (a < 0.1) { pixels[r][c] = null; continue; }
+        pixels[r][c] = `rgb(${Math.round(imgData.data[i]*a)},${Math.round(imgData.data[i+1]*a)},${Math.round(imgData.data[i+2]*a)})`;
+      }
+    }
+    pendingImageData = pixels;
+    document.getElementById('imgPlaceBtn').disabled = false;
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function addImageLayer() {
+  if (!pendingImageData) return;
+  const id = 'img_' + (++layerIdCounter);
+  const layer = {
+    id, type: 'image', visible: true,
+    pixels: pendingImageData,
+    x: parseInt(document.getElementById('imgX').value),
+    y: parseInt(document.getElementById('imgY').value),
+  };
+  dynamicLayers.push(layer);
+  addLayerUI(layer, '🖼', 'Image');
+  pendingImageData = null;
+  document.getElementById('imgPlaceBtn').disabled = true;
+  render();
+  if (fundraiserActive) rebuildFundLayerList();
+}
+
+// ═══════════════════════════════════════════
+// LAYER UI
+// ═══════════════════════════════════════════
+function addLayerUI(layer, icon, name) {
+  const list = document.getElementById('layersList');
+  const el = document.createElement('div');
+  el.className = 'layer-item' + (layer.vuMode === 'static' ? ' layer-item-expanded' : '');
+  el.dataset.layerId = layer.id;
+  el.style.flexWrap = 'wrap';
+
+  let controlsHTML = '';
+  if (layer.type === 'vu' && layer.vuMode === 'static') {
+    const bars = layer.bars;
+    const uniform = layer.uniformBars;
+    const initPct = Math.round((vuStates[layer.id]?.levels[0] || 0) * 100);
+
+    if (uniform) {
+      controlsHTML = `
+        <div class="layer-vu-controls">
+          <div class="vu-level-row">
+            <span class="vu-bar-label">All</span>
+            <div class="vu-incr-btns">
+              <button class="btn-sm btn" onclick="adjustStaticVU('${layer.id}','all',-1)">−</button>
+            </div>
+            <input type="range" min="0" max="100" value="${initPct}"
+              oninput="setStaticVULevel('${layer.id}','all',this.value)"
+              data-vu-slider="${layer.id}-all">
+            <span class="vu-level-val" data-vu-val="${layer.id}-all">${initPct}%</span>
+            <div class="vu-incr-btns">
+              <button class="btn-sm btn" onclick="adjustStaticVU('${layer.id}','all',1)">+</button>
+            </div>
+          </div>
+          <div class="vu-master-row">
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',0)">Empty</button>
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',50)">50%</button>
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',100)">Full</button>
+          </div>
+        </div>`;
+    } else {
+      let barSliders = '';
+      for (let b = 0; b < bars; b++) {
+        const bPct = Math.round((vuStates[layer.id]?.levels[b] || 0) * 100);
+        barSliders += `
+          <div class="vu-level-row">
+            <span class="vu-bar-label">${b+1}</span>
+            <div class="vu-incr-btns">
+              <button class="btn-sm btn" onclick="adjustStaticVU('${layer.id}',${b},-1)">−</button>
+            </div>
+            <input type="range" min="0" max="100" value="${bPct}"
+              oninput="setStaticVULevel('${layer.id}',${b},this.value)"
+              data-vu-slider="${layer.id}-${b}">
+            <span class="vu-level-val" data-vu-val="${layer.id}-${b}">${bPct}%</span>
+            <div class="vu-incr-btns">
+              <button class="btn-sm btn" onclick="adjustStaticVU('${layer.id}',${b},1)">+</button>
+            </div>
+          </div>`;
+      }
+      controlsHTML = `
+        <div class="layer-vu-controls">
+          ${barSliders}
+          <div class="vu-master-row">
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',0)">Empty</button>
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',50)">50%</button>
+            <button class="btn-sm btn" onclick="setStaticVULevel('${layer.id}','all',100)">Full</button>
+          </div>
+        </div>`;
+    }
+  }
+
+  if (layer.type === 'text') {
+    const speedIdx = [0.5, 0.75, 1, 1.5, 2.5].indexOf(layer.scrollSpeed);
+    const speedVal = speedIdx >= 0 ? speedIdx + 1 : 3;
+    const speedLabel = ['Slow','Slow-Med','Medium','Med-Fast','Fast'][speedVal - 1];
+    controlsHTML = `
+      <div class="layer-text-controls">
+        <div class="layer-text-row">
+          <span class="ctrl-label" style="margin:0;white-space:nowrap">Color</span>
+          <input type="color" value="${layer.color}" onchange="updateTextLayerProp('${layer.id}','color',this.value)" style="width:32px;height:26px">
+        </div>
+        <div class="layer-text-row">
+          <label class="checkbox-row" style="font-size:11px">
+            <input type="checkbox" ${layer.scroll ? 'checked' : ''} onchange="updateTextLayerProp('${layer.id}','scroll',this.checked); this.closest('.layer-text-controls').querySelector('.layer-text-speed').style.display=this.checked?'':'none'"> Scroll
+          </label>
+        </div>
+        <div class="layer-text-row layer-text-speed" style="display:${layer.scroll ? '' : 'none'}">
+          <span class="ctrl-label" style="margin:0;white-space:nowrap;min-width:42px">Speed</span>
+          <input type="range" min="1" max="5" value="${speedVal}"
+            oninput="updateTextScrollSpeed('${layer.id}',this.value); this.nextElementSibling.textContent=['Slow','S-M','Med','M-F','Fast'][this.value-1]"
+            style="flex:1">
+          <span class="ctrl-label" style="margin:0;min-width:28px;text-align:right">${speedLabel.substring(0,3)}</span>
+        </div>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <span class="layer-icon">${icon}</span>
+    <span class="layer-name">${name}</span>
+    <div class="layer-actions">
+      <div class="layer-vis" onclick="toggleDynLayerVis('${layer.id}',this)" title="Toggle visibility">👁</div>
+      <button class="btn-sm btn" onclick="removeDynLayer('${layer.id}')" title="Remove">✕</button>
+    </div>
+    ${controlsHTML}
+  `;
+  list.appendChild(el);
+}
+
+function toggleLayerVis(name, el) {
+  layers[name].visible = !layers[name].visible;
+  el.classList.toggle('hidden-layer');
+  render();
+}
+
+function toggleDynLayerVis(id, el) {
+  const layer = dynamicLayers.find(l => l.id === id);
+  if (layer) { layer.visible = !layer.visible; el.classList.toggle('hidden-layer'); render(); }
+}
+
+function removeDynLayer(id) {
+  const idx = dynamicLayers.findIndex(l => l.id === id);
+  if (idx >= 0) dynamicLayers.splice(idx, 1);
+  delete vuStates[id];
+  fundSelectedLayers.delete(id);
+  const el = document.querySelector(`[data-layer-id="${id}"]`);
+  if (el) el.remove();
+  render();
+  if (fundraiserActive) rebuildFundLayerList();
+}
+
+function updateTextLayerProp(layerId, prop, value) {
+  const layer = dynamicLayers.find(l => l.id === layerId);
+  if (!layer || layer.type !== 'text') return;
+  layer[prop] = value;
+  if (prop === 'scroll' && value) startAnimLoop();
+  render();
+}
+
+function updateTextScrollSpeed(layerId, sliderVal) {
+  const layer = dynamicLayers.find(l => l.id === layerId);
+  if (!layer || layer.type !== 'text') return;
+  layer.scrollSpeed = [0.5, 0.75, 1, 1.5, 2.5][parseInt(sliderVal) - 1];
+  render();
+}
+
+// ═══════════════════════════════════════════
+// PLACEMENT MODE
+// ═══════════════════════════════════════════
+let placementMode = null; // null | 'text' | 'vu' | 'image'
+let placementDrag = null; // for VU drag: { startR, startC }
+
+function startPlacement(type) {
+  // If already in this mode, cancel
+  if (placementMode === type) { cancelPlacement(); return; }
+  cancelPlacement(); // clear any previous
+  placementMode = type;
+
+  const grid = document.getElementById('matrixGrid');
+  const banner = document.getElementById('placementBanner');
+
+  // Update button states
+  const btnId = type === 'vu' ? 'vuPlaceBtn' : type === 'image' ? 'imgPlaceBtn' : 'textPlaceBtn';
+  document.getElementById(btnId).classList.add('placing');
+  document.getElementById(btnId).innerHTML = '⏹ Cancel Placement';
+
+  if (type === 'vu') {
+    grid.classList.add('placing-rect');
+    banner.textContent = 'Click and drag on the matrix to define the VU meter area — ESC to cancel';
+  } else {
+    grid.classList.add('placing-point');
+    const label = type === 'text' ? 'text' : 'image';
+    banner.textContent = `Click on the matrix to place the ${label} — ESC to cancel`;
+  }
+  banner.classList.add('active');
+}
+
+function cancelPlacement() {
+  if (!placementMode) return;
+  const grid = document.getElementById('matrixGrid');
+  grid.classList.remove('placing-point', 'placing-rect');
+  document.getElementById('placementBanner').classList.remove('active');
+  document.getElementById('placementRect').style.display = 'none';
+  placementDrag = null;
+
+  // Reset all place buttons
+  ['textPlaceBtn', 'vuPlaceBtn', 'imgPlaceBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    btn.classList.remove('placing');
+    if (id === 'vuPlaceBtn') btn.innerHTML = '📍 Drag VU Area on Matrix';
+    else if (id === 'textPlaceBtn') btn.innerHTML = '📍 Place Text on Matrix';
+    else btn.innerHTML = '📍 Place Image on Matrix';
+  });
+
+  placementMode = null;
+}
+
+function handlePlacementClick(r, c) {
+  if (!placementMode) return false;
+  if (placementMode === 'vu') return false; // VU uses drag, not click
+  if (placementMode === 'text') {
+    document.getElementById('textX').value = c;
+    document.getElementById('textY').value = r;
+  } else if (placementMode === 'image') {
+    document.getElementById('imgX').value = c;
+    document.getElementById('imgY').value = r;
+  }
+  const mode = placementMode;
+  cancelPlacement();
+  skipNextClick = true; // prevent the follow-up click from drawing
+  // Auto-add the layer
+  if (mode === 'text') addTextLayer();
+  else if (mode === 'image') addImageLayer();
+  return true;
+}
+
+function handlePlacementDragStart(r, c) {
+  if (placementMode !== 'vu') return false;
+  placementDrag = { startR: r, startC: c };
+  return true;
+}
+
+function handlePlacementDragMove(r, c) {
+  if (placementMode !== 'vu' || !placementDrag) return false;
+  const { startR, startC } = placementDrag;
+  const minR = Math.min(startR, r), maxR = Math.max(startR, r);
+  const minC = Math.min(startC, c), maxC = Math.max(startC, c);
+
+  // Update the visual selection rectangle
+  const rect = document.getElementById('placementRect');
+  const grid = document.getElementById('matrixGrid');
+  const firstLed = leds[0][0];
+  const lastLed = leds[ROWS-1][COLS-1];
+  const gridRect = grid.getBoundingClientRect();
+  const firstRect = leds[minR][minC].getBoundingClientRect();
+  const lastRect = leds[maxR][maxC].getBoundingClientRect();
+
+  const scale = zoom || 1;
+  rect.style.display = '';
+  rect.style.left = ((firstRect.left - gridRect.left) / scale) + 'px';
+  rect.style.top = ((firstRect.top - gridRect.top) / scale) + 'px';
+  rect.style.width = ((lastRect.right - firstRect.left) / scale) + 'px';
+  rect.style.height = ((lastRect.bottom - firstRect.top) / scale) + 'px';
+
+  // Update readout live
+  document.getElementById('vuXVal').textContent = minC;
+  document.getElementById('vuYVal').textContent = minR;
+  document.getElementById('vuWVal').textContent = maxC - minC + 1;
+  document.getElementById('vuHVal').textContent = maxR - minR + 1;
+
+  return true;
+}
+
+function handlePlacementDragEnd(r, c) {
+  if (placementMode !== 'vu' || !placementDrag) return false;
+  const { startR, startC } = placementDrag;
+  const minR = Math.min(startR, r), maxR = Math.max(startR, r);
+  const minC = Math.min(startC, c), maxC = Math.max(startC, c);
+
+  document.getElementById('vuX').value = minC;
+  document.getElementById('vuY').value = minR;
+  document.getElementById('vuWidth').value = maxC - minC + 1;
+  document.getElementById('vuHeight').value = maxR - minR + 1;
+
+  cancelPlacement();
+  addVuLayer();
+  return true;
+}
+
+// ESC key to cancel placement
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && placementMode) { cancelPlacement(); }
+});
+
+// ═══════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════
+function setTool(tool, el) {
+  currentTool = tool;
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  grid.style.cursor = tool === 'pick' ? 'pointer' : tool === 'fill' ? 'crosshair' : 'crosshair';
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('modeEdit').classList.toggle('active', mode==='edit');
+  document.getElementById('modePreview').classList.toggle('active', mode==='preview');
+  grid.style.cursor = mode === 'edit' ? 'crosshair' : 'default';
+}
+
+function pickColor(hex, el) {
+  document.getElementById('brushColor').value = hex;
+  document.querySelectorAll('.color-preset').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+}
+
+let paletteMode = 'full';
+function setPaletteMode(mode, el) {
+  paletteMode = mode;
+  el.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('fullPalette').style.display = mode === 'full' ? '' : 'none';
+  document.getElementById('liteBritePalette').style.display = mode === 'litebrite' ? '' : 'none';
+  // Set brush to first active color in the new palette
+  if (mode === 'litebrite') {
+    const active = document.querySelector('#liteBritePalette .active');
+    if (active) document.getElementById('brushColor').value = rgbToHex(active.style.background) || '#ffffff';
+  }
+}
+
+function togglePanel(header) {
+  const body = header.nextElementSibling;
+  const toggle = header.querySelector('.panel-toggle');
+  body.classList.toggle('hidden');
+  toggle.classList.toggle('collapsed');
+}
+
+function setVuOrientation(orient, el) {
+  vuOrientation = orient;
+  el.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function setVuMode(mode, el) {
+  vuMode = mode;
+  el.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('vuAnimatedControls').style.display = mode === 'animated' ? '' : 'none';
+  document.getElementById('vuStaticControls').style.display = mode === 'static' ? '' : 'none';
+}
+
+function setStaticVULevel(layerId, barIndex, value) {
+  const layer = dynamicLayers.find(l => l.id === layerId);
+  if (!layer || !vuStates[layerId]) return;
+  const state = vuStates[layerId];
+  const level = Math.max(0, Math.min(100, parseInt(value))) / 100;
+
+  if (barIndex === 'all') {
+    for (let i = 0; i < state.levels.length; i++) {
+      state.levels[i] = level;
+    }
+    // Update all sliders/values for this layer
+    if (layer.uniformBars) {
+      const slider = document.querySelector(`[data-vu-slider="${layerId}-all"]`);
+      const valEl = document.querySelector(`[data-vu-val="${layerId}-all"]`);
+      if (slider) slider.value = Math.round(level * 100);
+      if (valEl) valEl.textContent = Math.round(level * 100) + '%';
+    } else {
+      for (let i = 0; i < state.levels.length; i++) {
+        const slider = document.querySelector(`[data-vu-slider="${layerId}-${i}"]`);
+        const valEl = document.querySelector(`[data-vu-val="${layerId}-${i}"]`);
+        if (slider) slider.value = Math.round(level * 100);
+        if (valEl) valEl.textContent = Math.round(level * 100) + '%';
+      }
+    }
+  } else {
+    const idx = parseInt(barIndex);
+    state.levels[idx] = level;
+    const slider = document.querySelector(`[data-vu-slider="${layerId}-${idx}"]`);
+    const valEl = document.querySelector(`[data-vu-val="${layerId}-${idx}"]`);
+    if (slider) slider.value = Math.round(level * 100);
+    if (valEl) valEl.textContent = Math.round(level * 100) + '%';
+  }
+  render();
+}
+
+function adjustStaticVU(layerId, barIndex, direction) {
+  const layer = dynamicLayers.find(l => l.id === layerId);
+  if (!layer || !vuStates[layerId]) return;
+  const state = vuStates[layerId];
+  const step = layer.stepSize || 0.05;
+
+  if (barIndex === 'all') {
+    // For uniform mode, read current level from first bar
+    const currentPct = Math.round(state.levels[0] * 100);
+    const newPct = Math.max(0, Math.min(100, currentPct + direction * Math.round(step * 100)));
+    setStaticVULevel(layerId, 'all', newPct);
+  } else {
+    const idx = parseInt(barIndex);
+    const currentPct = Math.round(state.levels[idx] * 100);
+    const newPct = Math.max(0, Math.min(100, currentPct + direction * Math.round(step * 100)));
+    setStaticVULevel(layerId, idx, newPct);
+  }
+}
+
+// Zoom
+function zoomIn() { zoom = Math.min(2, zoom + 0.1); applyZoom(); }
+function zoomOut() { zoom = Math.max(0.4, zoom - 0.1); applyZoom(); }
+function applyZoom() {
+  document.getElementById('matrixWrapper').style.transform = `scale(${zoom})`;
+  document.getElementById('zoomLevel').textContent = Math.round(zoom*100) + '%';
+}
+
+function clearMatrix() {
+  layers.draw.data = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  layers.bg.color = null;
+  layers.bg.visible = true;
+  document.getElementById('matrixBgColor').value = '#000000';
+  dynamicLayers.length = 0;
+  Object.keys(vuStates).forEach(k => delete vuStates[k]);
+  fundSelectedLayers.clear();
+  const list = document.getElementById('layersList');
+  list.querySelectorAll('.layer-item:not([data-layer="draw"])').forEach(el => el.remove());
+  render();
+  if (fundraiserActive) rebuildFundLayerList();
+}
+
+function setMatrixBackground(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  layers.bg.color = (r === 0 && g === 0 && b === 0) ? null : `rgb(${r},${g},${b})`;
+  layers.bg.visible = true;
+  render();
+}
+
+// ═══════════════════════════════════════════
+// VU COLOR MODE SWITCH
+// ═══════════════════════════════════════════
+document.getElementById('vuColorMode').addEventListener('change', function() {
+  document.getElementById('vuCustomColors').style.display = this.value === 'custom' ? '' : 'none';
+  document.getElementById('vuMonoColorWrap').style.display = this.value === 'mono' ? '' : 'none';
+});
+
+// ═══════════════════════════════════════════
+// FUNDRAISER
+// ═══════════════════════════════════════════
+let fundraiserActive = false;
+const fundSelectedLayers = new Set(); // stores layer ids: 'draw', 'vu_1', 'text_2', etc.
+
+function toggleFundraiser() {
+  fundraiserActive = document.getElementById('fundraiserEnabled').checked;
+  document.getElementById('fundraiserControls').style.display = fundraiserActive ? '' : 'none';
+  if (fundraiserActive) {
+    rebuildFundLayerList();
+    updateFundraiser();
+  }
+}
+
+function rebuildFundLayerList() {
+  const list = document.getElementById('fundLayerList');
+  list.innerHTML = '';
+
+  // Draw layer (always present)
+  list.appendChild(createFundLayerRow('draw', '🖌', 'Draw Layer'));
+
+  // Dynamic layers
+  for (const layer of dynamicLayers) {
+    let icon = '?', name = layer.id;
+    if (layer.type === 'vu') {
+      icon = layer.vuMode === 'static' ? '🌡' : '📊';
+      name = `VU ${layer.vuMode === 'static' ? 'Static' : 'Anim'} ${layer.orientation}`;
+    } else if (layer.type === 'text') {
+      icon = '✎';
+      name = `"${layer.text.substring(0, 12)}"`;
+    } else if (layer.type === 'image') {
+      icon = '🖼';
+      name = 'Image';
+    }
+    list.appendChild(createFundLayerRow(layer.id, icon, name));
+  }
+
+  if (dynamicLayers.length === 0) {
+    // Just the draw layer, no extra message needed
+  }
+}
+
+function createFundLayerRow(layerId, icon, name) {
+  const row = document.createElement('label');
+  row.className = 'fund-layer-row' + (fundSelectedLayers.has(layerId) ? ' checked' : '');
+  row.innerHTML = `
+    <input type="checkbox" ${fundSelectedLayers.has(layerId) ? 'checked' : ''}>
+    <span class="fund-layer-icon">${icon}</span>
+    <span class="fund-layer-name">${name}</span>
+    <span class="fund-layer-count" data-fund-count="${layerId}">—</span>
+  `;
+  const cb = row.querySelector('input');
+  cb.addEventListener('change', () => {
+    if (cb.checked) {
+      fundSelectedLayers.add(layerId);
+      row.classList.add('checked');
+    } else {
+      fundSelectedLayers.delete(layerId);
+      row.classList.remove('checked');
+    }
+    updateFundraiser();
+  });
+  return row;
+}
+
+function countLayerPixels(layerId) {
+  let count = 0;
+  if (layerId === 'draw') {
+    if (!layers.draw.visible) return 0;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (layers.draw.data[r][c]) count++;
+    return count;
+  }
+
+  const layer = dynamicLayers.find(l => l.id === layerId);
+  if (!layer || !layer.visible) return 0;
+
+  // Render this layer into a temporary buffer and count non-null pixels
+  const buf = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  if (layer.type === 'vu') {
+    if (layer.vuMode !== 'static') simulateVU(layer);
+    renderVULayer(layer, buf);
+  } else if (layer.type === 'text') {
+    renderTextLayer(layer, buf);
+  } else if (layer.type === 'image') {
+    renderImageLayer(layer, buf);
+  }
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (buf[r][c]) count++;
+  return count;
+}
+
+function updateFundraiser() {
+  if (!fundraiserActive) return;
+
+  const goal = parseFloat(document.getElementById('fundraiserGoal').value) || 0;
+
+  // Count pixels per selected layer and total
+  let totalPegs = 0;
+  let selectedCount = 0;
+
+  // Update per-layer counts in the checklist
+  const allLayerIds = ['draw', ...dynamicLayers.map(l => l.id)];
+  for (const id of allLayerIds) {
+    const pixels = countLayerPixels(id);
+    const countEl = document.querySelector(`[data-fund-count="${id}"]`);
+    if (countEl) countEl.textContent = pixels.toLocaleString() + ' px';
+    if (fundSelectedLayers.has(id)) {
+      totalPegs += pixels;
+      selectedCount++;
+    }
+  }
+
+  const pegValue = totalPegs > 0 ? goal / totalPegs : 0;
+  const raised = totalPegs * pegValue; // = goal when all pegs placed
+  const progress = goal > 0 ? Math.min(100, (raised / goal) * 100) : 0;
+  const remaining = Math.max(0, goal - raised);
+
+  document.getElementById('fundSelectedCount').textContent = selectedCount;
+  document.getElementById('fundTotalPegs').textContent = totalPegs.toLocaleString();
+  document.getElementById('fundPegValue').textContent = totalPegs > 0
+    ? '$' + pegValue.toFixed(2)
+    : '—';
+  document.getElementById('fundPegsPlaced').textContent = totalPegs.toLocaleString();
+  document.getElementById('fundAmountRaised').textContent = '$' + raised.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('fundProgress').textContent = totalPegs > 0 ? progress.toFixed(1) + '%' : '0%';
+  document.getElementById('fundRemaining').textContent = totalPegs > 0
+    ? '$' + remaining.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})
+    : '—';
+
+  const fill = document.getElementById('fundProgressFill');
+  fill.style.width = progress + '%';
+  fill.classList.toggle('complete', progress >= 100);
+}
+
+// ═══════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════
+function exportJSON() {
+  const data = {
+    rows: ROWS, cols: COLS,
+    drawLayer: layers.draw.data,
+    dynamicLayers: dynamicLayers.map(l => {
+      const copy = {...l};
+      if (copy.type === 'image') delete copy.pixels; // too big
+      return copy;
+    })
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'led-matrix.json';
+  a.click();
+}
+
+function exportImage() {
+  const scale = 10;
+  const gap = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = COLS * (scale + gap) + gap;
+  canvas.height = ROWS * (scale + gap) + gap;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#080a0e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const el = leds[r][c];
+      const color = el.style.background || '#1a1e28';
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(gap + c*(scale+gap), gap + r*(scale+gap), scale, scale, 2);
+      ctx.fill();
+    }
+  }
+
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'led-matrix.png';
+  a.click();
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+initMatrix();
+render();
+startAnimLoop();
+
+// Brush color sync
+document.getElementById('brushColor').addEventListener('input', function() {
+  document.querySelectorAll('.color-preset').forEach(p => p.classList.remove('active'));
+});
+
+// ═══════════════════════════════════════════
+// ESP32 WEBSOCKET COMMUNICATION
+// ═══════════════════════════════════════════
+let ws = null;
+let wsConnected = false;
+let wsReconnectTimer = null;
+let lastSendTime = 0;
+const SEND_THROTTLE_MS = 33; // ~30fps max to ESP32
+
+function connectWS() {
+  // Determine WebSocket URL - connect to same host that served this page
+  const host = window.location.hostname || 'localhost';
+  const port = window.location.port || '80';
+  const wsUrl = `ws://${host}:${port}/ws`;
+  
+  updateHWStatus('connecting');
+  console.log('[WS] Connecting to', wsUrl);
+  
+  try {
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+  } catch (e) {
+    console.error('[WS] Connection error:', e);
+    updateHWStatus('disconnected');
+    scheduleReconnect();
+    return;
+  }
+  
+  ws.onopen = () => {
+    console.log('[WS] Connected!');
+    wsConnected = true;
+    updateHWStatus('connected');
+    
+    if (wsReconnectTimer) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+    
+    // Request device info
+    ws.send('info');
+    
+    // Sync brightness
+    const hwBright = document.getElementById('hwBrightness').value;
+    sendBrightness(hwBright);
+  };
+  
+  ws.onclose = (e) => {
+    console.log('[WS] Disconnected:', e.code, e.reason);
+    wsConnected = false;
+    updateHWStatus('disconnected');
+    scheduleReconnect();
+  };
+  
+  ws.onerror = (e) => {
+    console.error('[WS] Error:', e);
+    wsConnected = false;
+    updateHWStatus('disconnected');
+  };
+  
+  ws.onmessage = (e) => {
+    if (typeof e.data === 'string') {
+      handleWSText(e.data);
+    }
+    // Binary messages (like pong) are handled silently
+  };
+}
+
+function handleWSText(msg) {
+  if (msg.startsWith('info:')) {
+    // Parse device info
+    const info = msg.substring(5);
+    const pairs = info.split(',');
+    const infoObj = {};
+    pairs.forEach(p => {
+      const [k, v] = p.split('=');
+      infoObj[k] = v;
+    });
+    
+    const display = document.getElementById('hwInfoDisplay');
+    display.innerHTML = `
+      IP: ${infoObj.ip || '?'}<br>
+      Matrix: ${infoObj.rows || '?'}×${infoObj.cols || '?'}<br>
+      LEDs: ${infoObj.leds || '?'}<br>
+      Serpentine: ${infoObj.serpentine || '?'}<br>
+      Free RAM: ${infoObj.heap ? Math.round(infoObj.heap/1024) + 'KB' : '?'}<br>
+      FPS: ${infoObj.fps || '0'}
+    `;
+  } else if (msg.startsWith('status:')) {
+    console.log('[WS] Status:', msg);
+  } else if (msg === 'pong') {
+    // Keepalive response
+  }
+}
+
+function scheduleReconnect() {
+  if (wsReconnectTimer) return;
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    if (!wsConnected) {
+      console.log('[WS] Attempting reconnect...');
+      connectWS();
+    }
+  }, 3000);
+}
+
+function reconnectWS() {
+  if (ws) {
+    ws.close();
+  }
+  wsConnected = false;
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  connectWS();
+}
+
+function updateHWStatus(state) {
+  const dot = document.getElementById('hwDot');
+  const label = document.getElementById('hwLabel');
+  
+  dot.className = 'hw-dot';
+  label.className = 'hw-label';
+  
+  if (state === 'connected') {
+    dot.classList.add('connected');
+    label.classList.add('connected');
+    label.textContent = 'Connected';
+  } else if (state === 'connecting') {
+    dot.classList.add('connecting');
+    label.classList.add('connecting');
+    label.textContent = 'Connecting...';
+  } else {
+    label.textContent = 'Disconnected';
+  }
+}
+
+// Parse an rgb() or hex color string to [R, G, B]
+function parseColorToRGB(color) {
+  if (!color) return [0, 0, 0];
+  
+  // Handle rgb(r,g,b) format
+  const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (rgbMatch) {
+    return [parseInt(rgbMatch[1]), parseInt(rgbMatch[2]), parseInt(rgbMatch[3])];
+  }
+  
+  // Handle hex format
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1,3), 16);
+    const g = parseInt(color.slice(3,5), 16);
+    const b = parseInt(color.slice(5,7), 16);
+    return [r, g, b];
+  }
+  
+  return [0, 0, 0];
+}
+
+// Send full frame buffer to ESP32 via WebSocket
+function sendFrameToHW(buffer) {
+  if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  // Throttle to prevent overwhelming the ESP32
+  const now = Date.now();
+  if (now - lastSendTime < SEND_THROTTLE_MS) return;
+  lastSendTime = now;
+  
+  // Build binary frame: CMD(1 byte) + RGB data (NUM_LEDS * 3 bytes)
+  const numLeds = ROWS * COLS;
+  const frameData = new Uint8Array(1 + numLeds * 3);
+  frameData[0] = 0x01; // CMD: Full frame
+  
+  let offset = 1;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const color = buffer ? buffer[r][c] : null;
+      const [red, green, blue] = parseColorToRGB(color);
+      frameData[offset++] = red;
+      frameData[offset++] = green;
+      frameData[offset++] = blue;
+    }
+  }
+  
+  try {
+    ws.send(frameData.buffer);
+  } catch (e) {
+    console.error('[WS] Send error:', e);
+  }
+}
+
+// Manual push - rebuilds the buffer and sends
+function pushFrame() {
+  if (!wsConnected) {
+    console.warn('[WS] Not connected - cannot push frame');
+    return;
+  }
+  
+  // Rebuild the render buffer (same logic as render())
+  const buffer = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  
+  if (layers.bg.visible && layers.bg.color) {
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        buffer[r][c] = layers.bg.color;
+  }
+  
+  if (layers.draw.visible) {
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (layers.draw.data[r][c]) buffer[r][c] = layers.draw.data[r][c];
+  }
+  
+  for (const layer of dynamicLayers) {
+    if (!layer.visible) continue;
+    if (layer.type === 'vu') {
+      if (layer.vuMode !== 'static') simulateVU(layer);
+      renderVULayer(layer, buffer);
+    } else if (layer.type === 'text') {
+      renderTextLayer(layer, buffer);
+    } else if (layer.type === 'image') {
+      renderImageLayer(layer, buffer);
+    }
+  }
+  
+  sendFrameToHW(buffer);
+}
+
+function sendBrightness(value) {
+  if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const data = new Uint8Array([0x03, parseInt(value)]);
+  ws.send(data.buffer);
+}
+
+function sendClearHW() {
+  if (!wsConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const data = new Uint8Array([0x04]);
+  ws.send(data.buffer);
+}
+
+// Keepalive ping every 10 seconds
+setInterval(() => {
+  if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send('ping');
+    // Also request updated info
+    ws.send('info');
+  }
+}, 10000);
+
+// Auto-connect on page load
+connectWS();
+</script>
+
+</body>
+</html>
