@@ -1,4 +1,4 @@
-# ESP32 LED Matrix Controller — 23×46 WS2811
+# ESP32 LED Matrix Controller — 23×46 WS2811 (12V)
 
 ## Project Structure
 ```
@@ -9,123 +9,90 @@ esp32_led_matrix/
 └── README.md
 ```
 
+## Hardware Summary
+- **ESP32-WROOM-32** microcontroller
+- **1058 WS2811 12V LEDs** in a 23×46 matrix
+- **4-section parallel output** via GPIOs 16, 17, 18, 19
+- **Horizontal serpentine** wiring pattern
+- **Level shifter** (3.3V → 5V) on all 4 data lines
+- **75% brightness cap** (191/255) for power safety
+- **AP mode** by default — no router needed
+
+## 4-Section Layout
+```
+GPIO 16 →  Rows 0–5   (276 LEDs)  Section 1
+GPIO 17 →  Rows 6–11  (276 LEDs)  Section 2
+GPIO 18 →  Rows 12–17 (276 LEDs)  Section 3
+GPIO 19 →  Rows 18–22 (230 LEDs)  Section 4
+
+Within each section (horizontal serpentine):
+  Row 0:  → → → → → → (left to right)
+  Row 1:  ← ← ← ← ← ← (right to left)
+  Row 2:  → → → → → →
+  ...etc
+```
+
+## Wiring
+```
+ESP32 GPIO 16 → Level Shifter Ch1 → Section 1 Data In (Row 0)
+ESP32 GPIO 17 → Level Shifter Ch2 → Section 2 Data In (Row 6)
+ESP32 GPIO 18 → Level Shifter Ch3 → Section 3 Data In (Row 12)
+ESP32 GPIO 19 → Level Shifter Ch4 → Section 4 Data In (Row 18)
+
+Level Shifter LV  → ESP32 3.3V
+Level Shifter HV  → 5V (buck converter)
+Level Shifter GND → Common Ground
+
+12V Power Supply → WS2811 VCC (with injection every ~100 LEDs)
+12V Power Supply → Buck Converter → ESP32 5V/VIN
+
+ALL GROUNDS TIED TOGETHER (ESP32 + PSU + Level Shifter + LEDs)
+```
+
+## Power
+- 1058 LEDs × 60mA = **63.5A max** @ 12V
+- With 75% cap: ~47.6A realistic max
+- Recommended: **12V 75–80A supply** (or 2× 40A)
+- Power injection every ~100 LEDs to prevent voltage drop
+
 ## Required Libraries
-Install via **Arduino Library Manager** (Sketch → Include Library → Manage Libraries):
 1. **FastLED** by Daniel Garcia
-2. **ESPAsyncWebServer** by Me-No-Dev  
-3. **AsyncTCP** by Me-No-Dev
-
-> **Note:** ESPAsyncWebServer and AsyncTCP may need to be installed from GitHub:
-> - https://github.com/me-no-dev/ESPAsyncWebServer  
-> - https://github.com/me-no-dev/AsyncTCP  
-> Download the ZIP and use *Sketch → Include Library → Add .ZIP Library*
-
-## Wiring Diagram
-```
-ESP32                WS2811 LED Strip
-─────                ───────────────
-GPIO 16 ──[330Ω]──→ DATA IN
-GND ──────────────→ GND
-                     
-5V Power Supply      WS2811 LED Strip
-───────────────      ───────────────
-+5V ──────────────→ VCC (+5V)
-GND ──────────────→ GND
-                     
-ESP32 GND ←──────→ Power Supply GND  (IMPORTANT: common ground!)
-```
-
-### Power Considerations
-- 1058 WS2811 LEDs × 60mA max = **~63A at full white!**
-- Typical mixed-color usage: **20–30A** is usually sufficient
-- Use a **5V power supply rated for your expected load**
-- **Inject power** every 100–150 LEDs to prevent voltage drop
-- Add a **1000µF capacitor** across +5V and GND near the LEDs
+2. **ESPAsyncWebServer** by Me-No-Dev (may need GitHub install)
+3. **AsyncTCP** by Me-No-Dev (may need GitHub install)
 
 ## Upload Steps
 
-### Step 1: Configure WiFi
-Edit `esp32_led_matrix.ino` and change:
-```cpp
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-```
+### Step 1: Upload Web Interface to LittleFS
+- **Arduino IDE 2.x:** Use the [LittleFS Upload Plugin](https://github.com/earlephilhower/arduino-littlefs-upload), then *Tools → ESP32 Sketch Data Upload*
+- **PlatformIO:** `pio run --target uploadfs`
 
-Or set `AP_MODE = true` to create a standalone WiFi access point.
+### Step 2: Upload Firmware
+Select "ESP32 Dev Module" and upload the sketch.
 
-### Step 2: Configure LED Wiring (if needed)
-```cpp
-#define LED_PIN         16        // Change if using different GPIO
-#define SERPENTINE      true      // true for zig-zag wiring, false for parallel
-#define FIRST_ROW_AT_BOTTOM  false  // true if row 0 is at the bottom
-#define COLOR_ORDER     RGB       // Change to GRB, BRG, etc. if colors are swapped
-```
+### Step 3: Connect
+1. Connect your phone/computer to WiFi network **"LED-Matrix"** (password: `ledmatrix123`)
+2. Open **http://192.168.4.1** in a browser
+3. The web interface auto-connects via WebSocket — green dot in the header = connected
 
-### Step 3: Upload the Web Interface to LittleFS
+## Startup Animation
+On boot, the matrix sweeps each section in a different color to verify wiring:
+- Section 1 (Rows 0–5): Green
+- Section 2 (Rows 6–11): Blue
+- Section 3 (Rows 12–17): Orange
+- Section 4 (Rows 18–22): Purple
 
-**Arduino IDE 2.x:**
-1. Install the [LittleFS Upload Plugin](https://github.com/earlephilhower/arduino-littlefs-upload)
-2. Make sure `data/index.html` is in the sketch folder
-3. Use *Tools → ESP32 Sketch Data Upload*
-
-**PlatformIO:**
-1. Place the `data/` folder in your project root
-2. Run: `pio run --target uploadfs`
-
-### Step 4: Upload the Firmware
-1. Select your ESP32 board in Arduino IDE
-2. Select the correct COM port
-3. Click Upload
-
-### Step 5: Connect!
-1. Open Serial Monitor at 115200 baud to see the IP address
-2. Open that IP in a web browser on the same network
-3. The web interface should auto-connect via WebSocket
-
-## Communication Protocol
-
-### WebSocket (ws://[IP]/ws)
-
-**Binary commands (web → ESP32):**
-| Cmd Byte | Payload | Description |
-|----------|---------|-------------|
-| `0x01` | 3174 bytes (1058 × RGB) | Full frame update |
-| `0x02` | N × (index_hi, index_lo, R, G, B) | Partial update |
-| `0x03` | 1 byte (brightness 0–255) | Set brightness |
-| `0x04` | (none) | Clear all LEDs |
-| `0x05` | R, G, B | Fill solid color |
-| `0xFF` | (none) | Ping/keepalive |
-
-**Text commands (web → ESP32):**
-- `status` — Request status
-- `ping` — Keepalive
-- `info` — Request device info
-- `brightness:N` — Set brightness (0–255)
-- `clear` — Clear all LEDs
-
-**REST API (for external tools):**
-- `GET /api/status` — JSON status
-- `POST /api/clear` — Clear LEDs
-- `POST /api/brightness?value=N` — Set brightness
-
-## Web Interface Features
-- **Auto-Sync**: When checked, every visual change is pushed to hardware in real-time (~30fps max)
-- **Push Frame**: Manually push the current design to the LEDs
-- **Hardware Brightness**: Separate from the drawing brightness — controls actual LED output
-- **Clear HW**: Turn off all physical LEDs without affecting the design
-- **Hardware Panel**: Shows ESP32 connection info (IP, free RAM, FPS)
-- All original drawing tools, text layers, VU meters, images, and fundraiser mode work as before
+If a section doesn't light up or shows the wrong color, check that GPIO's data connection.
 
 ## Troubleshooting
 
-**Colors look wrong:** Change `COLOR_ORDER` in the `.ino` file. Try `GRB`, `BRG`, etc.
+**Colors wrong:** Change `COLOR_ORDER` in the `.ino`. Try `GRB`, `BRG`, etc.
 
-**LEDs are in the wrong order:** Toggle `SERPENTINE` between `true` and `false`. The startup animation (green sweep) will help you see the wiring pattern.
+**LEDs in wrong order within a row:** Toggle `sectionRow % 2 == 0` logic in `mapLED()` — your serpentine direction may be reversed.
 
-**First row shows at the bottom:** Set `FIRST_ROW_AT_BOTTOM = true`.
+**Section boundary looks offset:** Verify your physical wiring matches the row assignments (Sec1=0-5, Sec2=6-11, Sec3=12-17, Sec4=18-22).
 
-**Can't connect to WiFi:** The ESP32 will fall back to AP mode after 30 seconds. Connect to the "LED-Matrix" network (password: `ledmatrix123`).
+**WebSocket disconnects:** The web interface auto-reconnects every 3 seconds. Check ESP32 serial monitor for error messages.
 
-**Web page won't load:** Make sure you uploaded the `data/index.html` to LittleFS (Step 3).
+**Page won't load at 192.168.4.1:** Make sure you uploaded `data/index.html` to LittleFS (Step 1).
 
-**WebSocket disconnects frequently:** The web interface auto-reconnects every 3 seconds. Check that the ESP32 has stable power and WiFi signal.
+**Can I use a single data line instead of 4?** Yes, but you'd be limited to ~31 fps with 1058 LEDs. The 4-section approach gives ~120+ fps headroom, which matters for smooth animations and multi-user responsiveness.

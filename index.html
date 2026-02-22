@@ -760,7 +760,7 @@
   <div class="header-left">
     <div class="led-indicator"></div>
     <h1>LED Matrix Studio</h1>
-    <span class="dim">23 × 46 &nbsp;|&nbsp; WS2811</span>
+    <span class="dim">23 × 46 &nbsp;|&nbsp; WS2811 12V &nbsp;|&nbsp; 4-Section</span>
   </div>
   <div class="hw-controls">
     <div class="hw-status" id="hwStatus">
@@ -1061,11 +1061,11 @@
       </div>
       <div class="panel-body">
         <div>
-          <label class="ctrl-label">Hardware Brightness</label>
+          <label class="ctrl-label">Hardware Brightness (75% cap)</label>
           <div class="ctrl-row">
-            <input type="range" min="0" max="255" value="255" id="hwBrightness" 
+            <input type="range" min="0" max="191" value="191" id="hwBrightness" 
               oninput="document.getElementById('hwBrightnessVal').textContent=this.value; sendBrightness(this.value);">
-            <span id="hwBrightnessVal" style="font-family:monospace;font-size:11px;min-width:28px;text-align:right;color:var(--accent)">255</span>
+            <span id="hwBrightnessVal" style="font-family:monospace;font-size:11px;min-width:28px;text-align:right;color:var(--accent)">191</span>
           </div>
         </div>
         <div class="ctrl-row-split">
@@ -2508,11 +2508,13 @@ function handleWSText(msg) {
     const display = document.getElementById('hwInfoDisplay');
     display.innerHTML = `
       IP: ${infoObj.ip || '?'}<br>
-      Matrix: ${infoObj.rows || '?'}×${infoObj.cols || '?'}<br>
-      LEDs: ${infoObj.leds || '?'}<br>
-      Serpentine: ${infoObj.serpentine || '?'}<br>
+      Matrix: ${infoObj.rows || '?'}×${infoObj.cols || '?'} (${infoObj.voltage || '?'})<br>
+      LEDs: ${infoObj.leds || '?'} — ${infoObj.sections || '?'} sections<br>
+      GPIOs: ${infoObj.pins ? infoObj.pins.replace(/\|/g, ', ') : '?'}<br>
+      Wiring: ${infoObj.serpentine || '?'}<br>
+      Brightness: ${infoObj.brightness || '?'}/${infoObj.brightnessMax || '?'}<br>
       Free RAM: ${infoObj.heap ? Math.round(infoObj.heap/1024) + 'KB' : '?'}<br>
-      FPS: ${infoObj.fps || '0'}
+      Clients: ${infoObj.clients || '?'} | FPS: ${infoObj.fps || '0'}
     `;
   } else if (msg.startsWith('status:')) {
     console.log('[WS] Status:', msg);
